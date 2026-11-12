@@ -1,0 +1,73 @@
+name: Render submitted theme
+run-name: theme-job:${{ inputs.job_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        required: true
+        type: string
+      revision:
+        required: true
+        type: string
+      theme_hash:
+        required: true
+        type: string
+      user_id:
+        required: true
+        type: string
+      expires:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify trusted revision
+        env:
+          EXPECTED: ${{ inputs.revision }}
+          ACTUAL: ${{ github.sha }}
+          TRUSTED: ${{ vars.TRUSTED_RENDERER_REVISION }}
+        run: test "$EXPECTED" = "$ACTUAL" && test "$ACTUAL" = "$TRUSTED"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build && npm run render:build
+      - run: npx playwright install --with-deps chromium
+      - name: Download scoped submission input
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          USER_ID: ${{ inputs.user_id }}
+          INPUT_EXPIRES: ${{ inputs.expires }}
+          RENDERER_REVISION: ${{ inputs.revision }}
+          TRUSTED_RENDERER_REVISION: ${{ vars.TRUSTED_RENDERER_REVISION }}
+          LANDING_ORIGIN: ${{ vars.LANDING_ORIGIN }}
+          THEMES_CI_INPUT_SECRET: ${{ secrets.THEMES_CI_INPUT_SECRET }}
+        run: node scripts/download-input.mjs
+      - name: Generate bounded artifact
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          RENDERER_REVISION: ${{ inputs.revision }}
+          THEME_HASH: ${{ inputs.theme_hash }}
+        run: |
+          npm run render:start > renderer.log 2>&1 &
+          renderer_pid=$!
+          trap 'kill "$renderer_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3010 > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run render:submission
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: theme-job-${{ inputs.job_id }}
+          path: output/result.json
+          if-no-files-found: error
+          retention-days: 1

@@ -1,0 +1,23 @@
+$ns: 'gravity-ui-landing-';
+$gridBreakpoints: ('sm': 576px, 'md': 768px, 'lg': 992px);
+@use '~@gravity-ui/uikit/styles/themes/_index.scss' as themes;
+
+$block: '.#{$ns}table-preview';
+
+#{$block} {
+    width: 900px;
+
+    &__preview-wrapper {
+        width: 100%;
+    }
+
+    &__wrapper {
+        overflow-x: hidden;
+    }
+
+    &__table-wrapper {
+        max-width: 100%;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+}
