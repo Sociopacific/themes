@@ -1,25 +1,24 @@
 import {createHash} from 'node:crypto';
-import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {mkdir, writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {chromium} from '@playwright/test';
 import sharp from 'sharp';
+import {readSubmissionInput} from './read-submission-input.mjs';
 
 const require = createRequire(import.meta.url);
 const {validateThemeMetadata} = require('../dist/schema.js');
 const {validateThemePayload} = require('../dist/validation.js');
-const {JOB_ID, THEME_HASH, RENDERER_REVISION, GITHUB_SHA, GITHUB_RUN_ID} = process.env;
+const {JOB_ID, THEME_HASH, RENDERER_REVISION, GITHUB_SHA, GITHUB_RUN_ID, USER_ID} = process.env;
 if (!JOB_ID || !/^[a-f0-9-]{36}$/.test(JOB_ID) || !/^[a-f0-9]{40}$/.test(RENDERER_REVISION ?? '') ||
     GITHUB_SHA !== RENDERER_REVISION || !/^[a-f0-9]{64}$/.test(THEME_HASH ?? '') || !/^\d+$/.test(GITHUB_RUN_ID ?? '')) {
     throw new Error('Invalid renderer correlation');
 }
-if (process.env.THEMES_CI_INPUT_SECRET) throw new Error('Signing secret must not reach renderer');
-const text = await readFile('input/submission.json', 'utf8');
-if (Buffer.byteLength(text) > 1024 * 1024) throw new Error('CI input too large');
-const input = JSON.parse(text);
+if (!/^[1-9]\d*$/.test(USER_ID ?? '') || !Number.isSafeInteger(Number(USER_ID))) throw new Error('Invalid user id');
+const input = readSubmissionInput(process.env.SUBMISSION);
 validateThemeMetadata(input.metadata);
 const payload = validateThemePayload(input.payload);
 const hash = createHash('sha256').update(JSON.stringify({metadata: input.metadata, payload})).digest('hex');
-if (input.jobId !== JOB_ID || input.revision !== RENDERER_REVISION || input.themeHash !== THEME_HASH || hash !== THEME_HASH) {
+if (hash !== THEME_HASH) {
     throw new Error('CI input correlation mismatch');
 }
 const browser = await chromium.launch({args: ['--font-render-hinting=none', '--force-color-profile=srgb', '--disable-lcd-text']});
@@ -45,4 +44,4 @@ try {
     await browser.close();
 }
 await mkdir('output', {recursive: true});
-await writeFile('output/result.json', JSON.stringify({jobId: JOB_ID, runId: Number(GITHUB_RUN_ID), revision: RENDERER_REVISION, themeHash: THEME_HASH, files, hashes}));
+await writeFile('output/result.json', JSON.stringify({userId: Number(USER_ID), input: {metadata: input.metadata, payload}, jobId: JOB_ID, runId: Number(GITHUB_RUN_ID), revision: RENDERER_REVISION, themeHash: THEME_HASH, files, hashes}));

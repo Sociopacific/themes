@@ -15,7 +15,7 @@ on:
       user_id:
         required: true
         type: string
-      expires:
+      submission:
         required: true
         type: string
 permissions:
@@ -41,21 +41,13 @@ jobs:
       - run: npm ci
       - run: npm run build && npm run render:build
       - run: npx playwright install --with-deps chromium
-      - name: Download scoped submission input
-        env:
-          JOB_ID: ${{ inputs.job_id }}
-          USER_ID: ${{ inputs.user_id }}
-          INPUT_EXPIRES: ${{ inputs.expires }}
-          RENDERER_REVISION: ${{ inputs.revision }}
-          TRUSTED_RENDERER_REVISION: ${{ vars.TRUSTED_RENDERER_REVISION }}
-          LANDING_ORIGIN: ${{ vars.LANDING_ORIGIN }}
-          THEMES_CI_INPUT_SECRET: ${{ secrets.THEMES_CI_INPUT_SECRET }}
-        run: node scripts/download-input.mjs
       - name: Generate bounded artifact
         env:
           JOB_ID: ${{ inputs.job_id }}
           RENDERER_REVISION: ${{ inputs.revision }}
           THEME_HASH: ${{ inputs.theme_hash }}
+          USER_ID: ${{ inputs.user_id }}
+          SUBMISSION: ${{ inputs.submission }}
         run: |
           npm run render:start > renderer.log 2>&1 &
           renderer_pid=$!
