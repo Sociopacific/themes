@@ -37,10 +37,39 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
-          cache: npm
-      - run: npm ci
-      - run: npm run build && npm run render:build
-      - run: npx playwright install --with-deps chromium
+      # The renderer build is keyed by the trusted revision, so a hit is the same build.
+      - id: build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            node_modules
+            dist
+            renderer/.next
+          key: renderer-build-${{ runner.os }}-${{ github.sha }}
+      - if: steps.build-cache.outputs.cache-hit != 'true'
+        run: npm ci && npm run build && npm run render:build
+      # Saved before rendering: a failed submission still warms the next run.
+      - if: steps.build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            node_modules
+            dist
+            renderer/.next
+          key: renderer-build-${{ runner.os }}-${{ github.sha }}
+      # The runner image already has Chromium's system libraries; only the pinned browser is cached.
+      - id: browser-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Generate bounded artifact
         env:
           JOB_ID: ${{ inputs.job_id }}
